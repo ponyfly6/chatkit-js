@@ -491,6 +491,7 @@ export type HeaderIcon =
   | 'history'
   | 'book-open'
   | 'compose'
+  | 'share'
   | 'light-mode'
   | 'dark-mode'
   | 'close';
