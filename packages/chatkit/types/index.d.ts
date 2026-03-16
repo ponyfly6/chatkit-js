@@ -34,6 +34,12 @@ export type ChatKitOptions = {
   theme?: ColorScheme | ThemeOption;
 
   /**
+   * Accessible title for the ChatKit iframe element.
+   * @default "Chat"
+   */
+  frameTitle?: string;
+
+  /**
    * The ID of the thread to show when ChatKit is mounted or opened for the first time.
    * Passing `null` will show the new thread view.
    *
@@ -186,7 +192,10 @@ export type WidgetsOption = {
    */
   onAction?: (
     action: { type: string; payload?: Record<string, unknown> },
-    widgetItem: { id: string; widget: Widgets.Card | Widgets.ListView },
+    widgetItem: {
+      id: string;
+      widget: Widgets.Card | Widgets.ListView | Widgets.BasicRoot;
+    },
   ) => Promise<void>;
 };
 
@@ -196,6 +205,16 @@ export type EntitiesOption = {
    * Powers tag autocomplete within the composer.
    */
   onTagSearch?: (query: string) => Promise<Entity[]>;
+
+  /**
+   * Whether to render a composer button that inserts "@" into
+   * the textarea and triggers a tag search on click.
+   * Only renders when {@link EntitiesOption.onTagSearch} is provided.
+   *
+   * @default false
+   */
+  showComposerMenu?: boolean;
+
   /** Called when a rendered entity is clicked. */
   onClick?: (entity: Entity) => void;
   /**
@@ -286,10 +305,30 @@ export type ComposerOption = {
    * @see {@link ModelOption}
    */
   models?: ModelOption[];
+
+  /**
+   * Dictation (voice input) settings for the composer.
+   * Disabled when not provided.
+   */
+  dictation?: {
+    /**
+     * Enable dictation.
+     *
+     * @default false
+     */
+    enabled: boolean;
+  };
 };
 
 /**
+ * A Lucide icon identifier for ChatKit, in the form `lucide:<icon-name>`.
+ * Full icon list: https://lucide.dev/icons/
+ */
+export type LucideIcon = `lucide:${string}`;
+
+/**
  * Built-in icon names used by ChatKit for buttons and UI affordances.
+ * @see {@link LucideIcon}
  */
 export type ChatKitIcon =
   | 'agent'
@@ -309,12 +348,16 @@ export type ChatKitIcon =
   | 'chevron-left'
   | 'chevron-right'
   | 'circle-question'
+  | 'clock'
   | 'compass'
   | 'confetti'
   | 'cube'
+  | 'desktop'
   | 'document'
   | 'dots-horizontal'
+  | 'dots-vertical'
   | 'empty-circle'
+  | 'external-link'
   | 'globe'
   | 'keys'
   | 'lab'
@@ -325,14 +368,17 @@ export type ChatKitIcon =
   | 'mail'
   | 'map-pin'
   | 'maps'
+  | 'mobile'
   | 'name'
   | 'notebook'
   | 'notebook-pencil'
   | 'page-blank'
   | 'phone'
+  | 'play'
   | 'plus'
   | 'profile'
   | 'profile-card'
+  | 'reload'
   | 'star'
   | 'star-filled'
   | 'search'
@@ -347,14 +393,25 @@ export type ChatKitIcon =
   | 'wreath'
   | 'write'
   | 'write-alt'
-  | 'write-alt2';
+  | 'write-alt2'
+  | LucideIcon;
 
 export type StartScreenPrompt = {
   /** Human-readable label shown for the prompt. */
   label: string;
-  /** Text inserted into the composer when the prompt is chosen. */
-  prompt: string;
-  /** Optional icon displayed with the prompt. */
+  /**
+   * Preset message content submitted as a user message when selected.
+   * Provide a simple string for most prompts; use structured `UserMessageContent`
+   * segments only when you need advanced rich input (e.g. prefilled tags).
+   *
+   * @see {@link UserMessageContent}
+   */
+  prompt: string | UserMessageContent[];
+  /**
+   * Optional icon displayed with the prompt.
+   *
+   * @see {@link ChatKitIcon}
+   */
   icon?: ChatKitIcon;
 };
 
@@ -365,8 +422,7 @@ export type StartScreenPrompt = {
 
 /**
  * Attachment associated with a user message. When passed to `sendUserMessage` or
- * `setComposerValue`, it must already be uploaded by your server. We do not currently
- * support attaching raw Files to a message.
+ * `setComposerValue`, it must already be uploaded by your server.
  */
 export type Attachment =
   | {
@@ -432,6 +488,8 @@ export type HeaderIcon =
   | 'menu'
   | 'menu-inverted'
   | 'hamburger'
+  | 'history'
+  | 'book-open'
   | 'compose'
   | 'light-mode'
   | 'dark-mode'
@@ -446,7 +504,11 @@ export type ToolOption = {
   /** Label displayed in the tool menu */
   label: string;
 
-  /** Icon displayed next to the tool in the menu. */
+  /**
+   * Icon displayed next to the tool in the menu.
+   *
+   * @see {@link ChatKitIcon}
+   */
   icon: ChatKitIcon;
 
   /** Optional label displayed in the button when the tool is selected. */
@@ -511,6 +573,30 @@ export type Entity = {
   data?: Record<string, string>;
   // Later: optional entity-specific tag display options (e.g. tag prefix)
 };
+
+/**
+ * Identifies the tool that should run for a single message submission.
+ * Mirrors the `ToolChoice` shape exposed by the chatkit-python SDK.
+ */
+export type ToolChoice = { id: string };
+
+/**
+ * Structured user input segments for sending rich content (text or tags).
+ * Mirrors the `UserMessageContent` union from the chatkit-python SDK.
+ */
+export type UserMessageContent =
+  | {
+      type: 'input_text';
+      text: string;
+    }
+  | {
+      type: 'input_tag';
+      text: string;
+      id: string;
+      group?: string;
+      data?: Record<string, unknown>;
+      interactive?: boolean;
+    };
 
 /**
  * A webfont source used by ChatKit typography.
@@ -609,6 +695,8 @@ export type CustomApiConfig = {
 
   /**
    * How attachments will be uploaded to your server. Required when attachments are enabled.
+   *
+   * @see {@link FileUploadStrategy}
    */
   uploadStrategy?: FileUploadStrategy;
 };
@@ -887,18 +975,53 @@ export interface OpenAIChatKit extends HTMLElement {
 
   /** Sends a user message. */
   sendUserMessage(params: {
-    text: string;
+    text?: string;
+    /** Use instead of `text` when sending structured content such as entity tags. */
+    content?: UserMessageContent[];
     reply?: string;
+    /** Attachment associated with the user message. It must already be uploaded by your server. */
     attachments?: Attachment[];
     newThread?: boolean;
+    /**
+     * `toolChoice` and `model` map directly to backend `inference_options` for the submitted
+     * user message. These options do not update the selected tool or model in the composer.
+     * Use `setComposerValue({ selectedToolId, selectedModelId })` for selection in the composer.
+     */
+    toolChoice?: ToolChoice;
+    model?: string;
   }): Promise<void>;
 
   /** Sets the composer's content without sending a message. */
   setComposerValue(params: {
-    text: string;
+    text?: string;
+    /** Use instead of `text` when setting structured content such as entity tags. */
+    content?: UserMessageContent[];
     reply?: string;
+    /** Attachment associated with the user input. It must already be uploaded by your server. */
     attachments?: Attachment[];
+    /**
+     * Uploads the provided files and attaches them to the composer input. Use this option
+     * instead of `attachments` when the files still need to be sent to the server.
+     * Each file must already carry the correct MIME type metadata to be uploaded and
+     * rendered correctly.
+     */
+    files?: File[];
+    selectedToolId?: string;
+    selectedModelId?: string;
   }): Promise<void>;
+
+  /**
+   * Opens the thread history view.
+   *
+   * Intended for apps with a custom header or navigation that need to
+   * show history programmatically (for example, from a custom History button).
+   */
+  showHistory(): Promise<void>;
+
+  /**
+   * Closes the thread history view and returns to the current thread.
+   */
+  hideHistory(): Promise<void>;
 
   /**
    * Manually fetches updates from the server.
@@ -994,6 +1117,12 @@ export type ChatKitEvents = {
     data?: Record<string, unknown>;
   }>;
 
+  /** Emitted when a chatkit-link:// deeplink is clicked. */
+  'chatkit.deeplink': CustomEvent<{
+    name: string;
+    data?: Record<string, unknown>;
+  }>;
+
   /** Emitted when the assistant begins sending a response. */
   'chatkit.response.start': CustomEvent<void>;
 
@@ -1008,6 +1137,9 @@ export type ChatKitEvents = {
 
   /** Emitted when ChatKit finished loading a thread. */
   'chatkit.thread.load.end': CustomEvent<{ threadId: string }>;
+
+  /** Emitted when the selected composer tool changes. */
+  'chatkit.tool.change': CustomEvent<{ toolId: string | null }>;
 
   /** Diagnostic events that can be used for logging/analytics. */
   'chatkit.log': CustomEvent<{

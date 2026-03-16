@@ -29,6 +29,7 @@ type UseChatKitOptions = ChatKitOptions &
     onError: (event: { error: Error }) => void;
     onLog: (event: { name: string; data?: Record<string, unknown> }) => void;
     onEffect: (event: { name: string; data?: Record<string, unknown> }) => void;
+    onDeeplink: (event: { name: string; data?: Record<string, unknown> }) => void;
   }>;
 ```
 
@@ -51,21 +52,30 @@ type UseChatKitReturn = {
   focusComposer: () => Promise<void>;
   setThreadId: (threadId: string | null) => Promise<void>;
   sendUserMessage: (params: {
-    text: string;
+    text?: string;
+    content?: UserMessageContent[];
     reply?: string;
     attachments?: Attachment[];
     newThread?: boolean;
+    toolChoice?: ToolChoice;
+    model?: string;
   }) => Promise<void>;
   setComposerValue: (params: {
-    text: string;
+    text?: string;
+    content?: UserMessageContent[];
     reply?: string;
     attachments?: Attachment[];
+    files?: File[];
+    selectedToolId?: string;
+    selectedModelId?: string;
   }) => Promise<void>;
   fetchUpdates: () => Promise<void>;
   sendCustomAction: (
     action: { type: string; payload?: Record<string, unknown> },
     itemId?: string,
   ) => Promise<void>;
+  showHistory: () => Promise<void>;
+  hideHistory: () => Promise<void>;
   control: ChatKitControl;
   ref: React.RefObject<OpenAIChatKit | null>;
 };
